@@ -17,23 +17,74 @@ export default function Auth() {
     setError(null);
     setMessage(null);
 
+    // Trim and normalize email
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalizedEmail)) {
+        throw new Error('Please enter a valid email address');
+      }
+      console.log('normalizedEmail', normalizedEmail);
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
+        console.log('signing up');
+        console.log('normalizedEmail', normalizedEmail);
+        console.log('password', password);
+        
+        // Signup with minimal payload - Supabase rejects test domains like @example.com
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
           password
         });
+        
+        console.log('Signup response:', { data, error });
+        
         if (error) throw error;
-        setMessage('Check your email to confirm your account!');
+        
+        // Check if email confirmation is required
+        if (data.user && !data.session) {
+          setMessage('Check your email to confirm your account!');
+        } else if (data.session) {
+          setMessage('Account created successfully!');
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password
+          email: normalizedEmail,
+          password,
         });
         if (error) throw error;
       }
     } catch (error: any) {
-      setError(error.message || 'An error occurred');
+      // Log full error for debugging
+      console.error('Auth error:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        status: error.status,
+        statusCode: error.statusCode,
+        email: normalizedEmail
+      });
+      
+      // Provide more helpful error messages
+      if (error.code === 'email_address_invalid' || error.message?.includes('is invalid')) {
+        setError('Email address is invalid. Note: Test domains like @example.com are not supported. Please use a real email address (e.g., @gmail.com, @yahoo.com).');
+      } else if (error.code === 'invalid_credentials' || error.message?.includes('Invalid login credentials')) {
+        setError('Invalid email or password. Please check your credentials and try again.');
+      } else if (error.code === 'email_not_confirmed' || error.message?.includes('Email not confirmed')) {
+        setError('Please check your email and confirm your account before signing in.');
+      } else if (error.code === 'signup_disabled') {
+        setError('Sign up is currently disabled. Please contact support.');
+      } else if (error.code === 'user_already_registered') {
+        setError('This email is already registered. Please sign in instead.');
+      } else if (error.status === 400 || error.statusCode === 400) {
+        setError(`Bad request: ${error.message || 'Please check your email and password format.'}`);
+      } else if (error.message) {
+        setError(error.message);
+      } else {
+        setError('An error occurred. Please check your credentials and try again.');
+      }
     } finally {
       setLoading(false);
     }
